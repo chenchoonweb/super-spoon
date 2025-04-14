@@ -23,7 +23,7 @@ def run(llm):
 
     # Step 2: Ask if they want to upload documents
     refer_documents = st.radio(
-        "Do you want to upload reference documents for generating the talking points?",
+        "Do you want to upload reference documents?",
         ["No", "Yes"],
         key="refer_docs_choice"
     )
