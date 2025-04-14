@@ -1,5 +1,3 @@
-
-# usecases/draft_talking_points.py
 import streamlit as st
 from utils.file_loader import load_documents
 from utils.vectorstore import create_vectorstore
@@ -10,41 +8,60 @@ from langchain.chains import ConversationalRetrievalChain
 def run(llm):
     st.subheader("🗣️ Draft Talking Points")
 
-    # Step 1: Ask user what they want to do
+    # Step 1: Ask user for the subject of the talking points
     if "vectorstore" not in st.session_state:
         st.session_state.vectorstore = None
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    subject = st.text_input("What is the subject of the talking point?")
-    if not subject:
-        st.warning("Please enter a subject for the talking point.")
-        return
+    # Clearly ask for the subject
+    subject = st.text_input("What is the subject of the talking points you want to generate?")
 
-    # Step 2: Ask if the user wants to refer to documents for drafting talking points
+    # If no subject is provided, give a warning
+    if not subject:
+        st.warning("Please enter a subject for the talking points to continue.")
+        return  # Prevent moving forward until a subject is provided
+
+    # Step 2: Ask if the user wants to upload local reference documents for talking points
     refer_documents = st.radio(
-        "Would you like to refer to one or more documents (PDF, Word, Excel, etc.) for drafting the talking points?",
+        "Do you want to upload any local reference documents (PDF, Word, Excel, etc.) for creating the talking points?",
         ["No", "Yes"]
     )
 
     docs = None
     if refer_documents == "Yes":
+        # Step 3: File upload for documents if "Yes" is selected
         uploaded_files = st.file_uploader(
             "Upload your documents",
             type=["pdf", "docx", "txt", "xlsx"],
             accept_multiple_files=True
         )
+        
+        # If documents are uploaded, process them
         if uploaded_files:
             docs = load_documents(uploaded_files)
+            st.success(f"Successfully uploaded {len(uploaded_files)} document(s).")
+        else:
+            st.warning("Please upload at least one document to proceed with reference material.")
 
-    # Step 3: Process and create vectorstore
+    # Step 4: Process documents and create vectorstore if documents are uploaded
     if docs:
         with st.spinner("Processing documents..."):
             st.session_state.vectorstore = create_vectorstore(docs)
-            st.success("✅ Documents processed!")
+            st.success("✅ Documents processed and ready for talking points generation!")
 
-    # Step 4: If vectorstore is ready, allow question input for generating talking points
-    if st.session_state.vectorstore:
+    # Step 5: If no documents are uploaded, use LLM's knowledge to generate talking points
+    if not docs:
+        with st.spinner("Generating talking points from LLM's knowledge..."):
+            result = llm(subject)  # This part generates talking points from LLM
+            talking_points = result['text']  # Assume LLM returns the talking points in the 'text' field
+
+            # Display talking points
+            st.markdown(f"### 💬 **Generated Talking Points on {subject}**\n\n{talking_points}")
+
+    # Step 6: If vectorstore is created (i.e., documents uploaded), generate talking points
+    elif st.session_state.vectorstore:
+        # Use Conversational Retrieval Chain to generate points based on subject
         memory = get_memory()
         qa_chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
@@ -52,27 +69,27 @@ def run(llm):
             memory=memory
         )
 
-        # Generate talking points based on the subject entered by the user
-        if subject:
-            query = f"Generate well-structured talking points on the subject of {subject}. Include both international and local content based on the provided documents."
-            with st.spinner("Generating talking points..."):
-                result = qa_chain.invoke({"question": query})
-                talking_points = result["answer"]
-                st.session_state.chat_history.append((query, talking_points))
+        query = f"Generate well-structured talking points on the subject of {subject}. Include both international and local content based on the provided documents."
+        
+        with st.spinner("Generating talking points..."):
+            result = qa_chain.invoke({"question": query})
+            talking_points = result["answer"]
+            st.session_state.chat_history.append((query, talking_points))
 
-                # Format the answer dynamically based on LLM's response
-                formatted_answer = format_talking_points(talking_points)
+            # Format and display talking points
+            formatted_answer = format_talking_points(talking_points)
+            st.markdown(f"### 💬 **Talking Points**\n\n{formatted_answer}")
 
-                st.markdown("### 💬 **Talking Points**\n\n" + formatted_answer)
+            # Option to download the talking points as a PDF
+            if st.button("📥 Download Talking Points as PDF"):
+                export_answer_to_pdf(formatted_answer)
 
-                # Option to download the answer as PDF
-                if st.button("📥 Download Talking Points as PDF"):
-                    export_answer_to_pdf(formatted_answer)
-
-                st.markdown("### 📜 Chat History")
-                for i, (q, a) in enumerate(st.session_state.chat_history):
-                    st.markdown(f"**Q{i+1}:** {q}")
-                    st.markdown(f"**A{i+1}:** {a}")
+    # Step 7: Display chat history with a limit (showing the last 5 exchanges)
+    st.markdown("### 📜 Chat History")
+    max_history = 5
+    for i, (q, a) in enumerate(st.session_state.chat_history[-max_history:]):
+        st.markdown(f"**Q{i+1}:** {q}")
+        st.markdown(f"**A{i+1}:** {a}")
 
 def format_talking_points(answer):
     """
@@ -100,3 +117,4 @@ def format_talking_points(answer):
     formatted_answer = formatted_answer.replace("- ", "\n- ")
 
     return formatted_answer
+
